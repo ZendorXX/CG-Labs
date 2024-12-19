@@ -2,6 +2,7 @@
 #include <SFML/Graphics.hpp>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <string>
 
@@ -53,6 +54,11 @@ glm::vec3 cameraPosition = glm::vec3(0.0f, 1.0f, 5.0f);
 glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
 glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 float cameraSpeed = 0.01f;
+
+// Для поворота камеры
+float yaw = -90.0f; // Угол рыскания (yaw)
+float pitch = 0.0f; // Угол тангажа (pitch)
+float rotationSpeed = 0.01f; // Скорость поворота
 
 // Функция для компиляции шейдеров
 GLuint compileShader(const std::string& source, GLenum shaderType) {
@@ -190,11 +196,11 @@ void drawPyramid() {
 }
 
 void processInput(sf::Window& window) {
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up)) {
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::R)) {
         scale += 0.01f;
         scale = std::min(scale, maxScale);
     }
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) {
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::F)) {
         scale -= 0.01f;
         scale = std::max(scale, minScale);
     }
@@ -213,11 +219,43 @@ void processInput(sf::Window& window) {
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::E))
         cameraPosition.y -= cameraSpeed;
 
+    // Управление поворотом камеры
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left)) {
+        yaw -= rotationSpeed;
+    }
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) {
+        yaw += rotationSpeed;
+    }
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up)) {
+        pitch += rotationSpeed;
+    }
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) {
+        pitch -= rotationSpeed;
+    }
+
+    // Ограничение угла тангажа
+    if (pitch > 89.0f)
+        pitch = 89.0f;
+    if (pitch < -89.0f)
+        pitch = -89.0f;
+
+    // Обновление направления камеры
+    glm::vec3 direction;
+    direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    direction.y = sin(glm::radians(pitch));
+    direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    cameraTarget = cameraPosition + glm::normalize(direction);
+
     // Обновление матрицы вида
     viewMatrix = lookAt(cameraPosition, cameraTarget, cameraUp);
 
     std::cout << "Current pyramid scale: " << scale << std::endl;
     std::cout << "Camera position: (" << cameraPosition.x << ", " << cameraPosition.y << ", " << cameraPosition.z << ")" << std::endl;
+}
+
+void resizeCallback(sf::Window& window, int width, int height) {
+    glViewport(0, 0, width, height);
+    projectionMatrix = perspective(glm::radians(45.0f), (float)width / (float)height, 0.1f, 100.0f);
 }
 
 int main() {
@@ -264,6 +302,9 @@ int main() {
         while (window.pollEvent(event)) {
             if (event.type == sf::Event::Closed)
                 window.close();
+            if (event.type == sf::Event::Resized) {
+                resizeCallback(window, event.size.width, event.size.height);
+            }
         }
 
         processInput(window);
