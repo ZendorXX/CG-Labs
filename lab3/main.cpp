@@ -2,7 +2,6 @@
 #include <SFML/Graphics.hpp>
 #include <GL/glew.h>
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <string>
 
@@ -119,6 +118,59 @@ void createShaderProgram() {
     glDeleteShader(fragmentShader);
 }
 
+// Функция для создания матрицы масштабирования
+glm::mat4 scaleMatrix(float scaleX, float scaleY, float scaleZ) {
+    glm::mat4 scale = glm::mat4(1.0f);
+    scale[0][0] = scaleX;
+    scale[1][1] = scaleY;
+    scale[2][2] = scaleZ;
+    return scale;
+}
+
+// Функция для создания матрицы перемещения
+glm::mat4 translateMatrix(const glm::vec3& translation) {
+    glm::mat4 translationMatrix = glm::mat4(1.0f);
+    translationMatrix[3][0] = translation.x;
+    translationMatrix[3][1] = translation.y;
+    translationMatrix[3][2] = translation.z;
+    return translationMatrix;
+}
+
+// Функция для создания матрицы вида (lookAt)
+glm::mat4 lookAt(const glm::vec3& eye, const glm::vec3& target, const glm::vec3& up) {
+    glm::vec3 forward = glm::normalize(target - eye);
+    glm::vec3 right = glm::normalize(glm::cross(forward, up));
+    glm::vec3 newUp = glm::cross(right, forward);
+
+    glm::mat4 view = glm::mat4(1.0f);
+    view[0][0] = right.x;
+    view[1][0] = right.y;
+    view[2][0] = right.z;
+    view[0][1] = newUp.x;
+    view[1][1] = newUp.y;
+    view[2][1] = newUp.z;
+    view[0][2] = -forward.x;
+    view[1][2] = -forward.y;
+    view[2][2] = -forward.z;
+    view[3][0] = -glm::dot(right, eye);
+    view[3][1] = -glm::dot(newUp, eye);
+    view[3][2] = glm::dot(forward, eye);
+
+    return view;
+}
+
+// Функция для создания матрицы перспективной проекции
+glm::mat4 perspective(float fov, float aspect, float near, float far) {
+    float tanHalfFov = tan(fov / 2.0f);
+    glm::mat4 projection = glm::mat4(0.0f);
+    projection[0][0] = 1.0f / (aspect * tanHalfFov);
+    projection[1][1] = 1.0f / tanHalfFov;
+    projection[2][2] = -(far + near) / (far - near);
+    projection[2][3] = -1.0f;
+    projection[3][2] = -(2.0f * far * near) / (far - near);
+    return projection;
+}
+
 void initOpenGL() {
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
@@ -127,8 +179,8 @@ void initOpenGL() {
     createShaderProgram();
 
     // Настройка матриц
-    viewMatrix = glm::lookAt(cameraPosition, cameraTarget, cameraUp);
-    projectionMatrix = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
+    viewMatrix = lookAt(cameraPosition, cameraTarget, cameraUp);
+    projectionMatrix = perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
 }
 
 void drawPyramid() {
@@ -162,7 +214,7 @@ void processInput(sf::Window& window) {
         cameraPosition.y -= cameraSpeed;
 
     // Обновление матрицы вида
-    viewMatrix = glm::lookAt(cameraPosition, cameraTarget, cameraUp);
+    viewMatrix = lookAt(cameraPosition, cameraTarget, cameraUp);
 
     std::cout << "Current pyramid scale: " << scale << std::endl;
     std::cout << "Camera position: (" << cameraPosition.x << ", " << cameraPosition.y << ", " << cameraPosition.z << ")" << std::endl;
@@ -219,7 +271,7 @@ int main() {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // Применение масштабирования
-        glm::mat4 modelMatrix = glm::scale(glm::mat4(1.0f), glm::vec3(scale, scale, scale));
+        glm::mat4 modelMatrix = scaleMatrix(scale, scale, scale);
 
         // Установка матриц в шейдеры
         glUseProgram(shaderProgram);
