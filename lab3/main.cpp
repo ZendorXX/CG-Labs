@@ -39,8 +39,8 @@ const GLuint pyramidIndices[] = {
 // Глобальные переменные для VAO и масштабирования
 GLuint VAO, VBO, CBO, EBO;
 float scale = 1.0f;
-const float minScale = 0.5f;
-const float maxScale = 2.0f;
+const float minScale = 0.05f;
+const float maxScale = 6.0f;
 
 // Матрицы для камеры
 glm::mat4 viewMatrix;
@@ -53,7 +53,7 @@ GLuint shaderProgram;
 glm::vec3 cameraPosition = glm::vec3(0.0f, 1.0f, 5.0f);
 glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
 glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
-float cameraSpeed = 0.05f;
+float cameraSpeed = 0.01f;
 
 // Функция для компиляции шейдеров
 GLuint compileShader(const std::string& source, GLenum shaderType) {
@@ -141,12 +141,10 @@ void processInput(sf::Window& window) {
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up)) {
         scale += 0.01f;
         scale = std::min(scale, maxScale);
-        std::cout << "Current scale: " << scale << std::endl;
     }
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) {
         scale -= 0.01f;
         scale = std::max(scale, minScale);
-        std::cout << "Current scale: " << scale << std::endl;
     }
 
     // Управление камерой
@@ -166,7 +164,7 @@ void processInput(sf::Window& window) {
     // Обновление матрицы вида
     viewMatrix = glm::lookAt(cameraPosition, cameraTarget, cameraUp);
 
-    // Вывод положения камеры в консоль
+    std::cout << "Current pyramid scale: " << scale << std::endl;
     std::cout << "Camera position: (" << cameraPosition.x << ", " << cameraPosition.y << ", " << cameraPosition.z << ")" << std::endl;
 }
 
