@@ -9,29 +9,38 @@
 // Вершины пирамиды
 const GLfloat pyramidVertices[] = {
     // Основание (квадрат)
-    -1.0f, -1.0f, -1.0f,
-     1.0f, -1.0f, -1.0f,
-     1.0f, -1.0f,  1.0f,
-    -1.0f, -1.0f,  1.0f,
+    -1.0f, -1.0f, -1.0f, // Вершина 0
+     1.0f, -1.0f, -1.0f, // Вершина 1
+     1.0f, -1.0f,  1.0f, // Вершина 2
+    -1.0f, -1.0f,  1.0f, // Вершина 3
     // Вершина
-     0.0f,  1.0f,  0.0f
+     0.0f,  1.0f,  0.0f  // Вершина 4
+};
+
+// Цвета для каждой вершины
+const GLfloat pyramidColors[] = {
+    1.0f, 0.0f, 0.0f, // Красный (вершина 0)
+    0.0f, 1.0f, 0.0f, // Зеленый (вершина 1)
+    0.0f, 0.0f, 1.0f, // Синий (вершина 2)
+    1.0f, 1.0f, 0.0f, // Желтый (вершина 3)
+    1.0f, 0.0f, 1.0f  // Фиолетовый (вершина 4)
 };
 
 // Индексы для отрисовки треугольников
 const GLuint pyramidIndices[] = {
     0, 1, 2, // Основание
     2, 3, 0, // Основание
-    0, 1, 4, // Боковые грани
-    1, 2, 4,
-    2, 3, 4,
-    3, 0, 4
+    0, 1, 4, // Боковая грань 1
+    1, 2, 4, // Боковая грань 2
+    2, 3, 4, // Боковая грань 3
+    3, 0, 4  // Боковая грань 4
 };
 
 // Глобальные переменные для VAO и масштабирования
-GLuint VAO, VBO, EBO;
+GLuint VAO, VBO, CBO, EBO;
 float scale = 1.0f;
-const float minScale = 0.01f;
-const float maxScale = 5.0f;
+const float minScale = 0.5f;
+const float maxScale = 2.0f;
 
 // Матрицы для камеры
 glm::mat4 viewMatrix;
@@ -44,7 +53,7 @@ GLuint shaderProgram;
 glm::vec3 cameraPosition = glm::vec3(0.0f, 1.0f, 5.0f);
 glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
 glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
-float cameraSpeed = 0.005f;
+float cameraSpeed = 0.05f;
 
 // Функция для компиляции шейдеров
 GLuint compileShader(const std::string& source, GLenum shaderType) {
@@ -69,20 +78,24 @@ void createShaderProgram() {
     std::string vertexShaderSource = R"(
         #version 330 core
         layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec3 aColor;
+        out vec3 ourColor;
         uniform mat4 model;
         uniform mat4 view;
         uniform mat4 projection;
         void main() {
             gl_Position = projection * view * model * vec4(aPos, 1.0);
+            ourColor = aColor;
         }
     )";
 
     // Фрагментный шейдер
     std::string fragmentShaderSource = R"(
         #version 330 core
+        in vec3 ourColor;
         out vec4 FragColor;
         void main() {
-            FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f); // Оранжевый цвет
+            FragColor = vec4(ourColor, 1.0f);
         }
     )";
 
@@ -126,12 +139,12 @@ void drawPyramid() {
 
 void processInput(sf::Window& window) {
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up)) {
-        scale += 0.001f;
+        scale += 0.01f;
         scale = std::min(scale, maxScale);
         std::cout << "Current scale: " << scale << std::endl;
     }
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) {
-        scale -= 0.001f;
+        scale -= 0.01f;
         scale = std::max(scale, minScale);
         std::cout << "Current scale: " << scale << std::endl;
     }
@@ -152,6 +165,9 @@ void processInput(sf::Window& window) {
 
     // Обновление матрицы вида
     viewMatrix = glm::lookAt(cameraPosition, cameraTarget, cameraUp);
+
+    // Вывод положения камеры в консоль
+    std::cout << "Camera position: (" << cameraPosition.x << ", " << cameraPosition.y << ", " << cameraPosition.z << ")" << std::endl;
 }
 
 int main() {
@@ -167,21 +183,29 @@ int main() {
     glewInit();
     initOpenGL();
 
-    // Настройка VAO и VBO
+    // Настройка VAO, VBO, CBO, EBO
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
+    glGenBuffers(1, &CBO);
     glGenBuffers(1, &EBO);
 
     glBindVertexArray(VAO);
 
+    // Вершины
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(pyramidVertices), pyramidVertices, GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(pyramidIndices), pyramidIndices, GL_STATIC_DRAW);
-
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)0);
     glEnableVertexAttribArray(0);
+
+    // Цвета
+    glBindBuffer(GL_ARRAY_BUFFER, CBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(pyramidColors), pyramidColors, GL_STATIC_DRAW);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), (void*)0);
+    glEnableVertexAttribArray(1);
+
+    // Индексы
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(pyramidIndices), pyramidIndices, GL_STATIC_DRAW);
 
     glBindVertexArray(0);
 
@@ -212,6 +236,7 @@ int main() {
 
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
+    glDeleteBuffers(1, &CBO);
     glDeleteBuffers(1, &EBO);
 
     return 0;
