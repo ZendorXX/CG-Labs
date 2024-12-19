@@ -6,31 +6,26 @@
 #include <iostream>
 #include <vector>
 
-// Глобальные переменные для VAO и масштабирования
 GLuint VAO, VBO, CBO, EBO;
 float scale = 1.0f;
 const float minScale = 0.05f;
 const float maxScale = 6.0f;
 
-// Матрицы для камеры
 glm::mat4 viewMatrix;
 glm::mat4 projectionMatrix;
 
-// Шейдеры
 GLuint shaderProgram;
 
-// Камера
 glm::vec3 cameraPosition = glm::vec3(0.0f, 1.0f, 5.0f);
 glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
 glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 float cameraSpeed = 0.01f;
 
-// Для поворота камеры
-float yaw = -90.0f; // Угол рыскания (yaw)
-float pitch = 0.0f; // Угол тангажа (pitch)
-float rotationSpeed = 0.01f; // Скорость поворота
 
-// Функция для компиляции шейдеров
+float yaw = -90.0f; 
+float pitch = 0.0f; 
+float rotationSpeed = 0.01f; 
+
 GLuint compileShader(const std::string& source, GLenum shaderType) {
     GLuint shader = glCreateShader(shaderType);
     const char* src = source.c_str();
@@ -47,9 +42,8 @@ GLuint compileShader(const std::string& source, GLenum shaderType) {
     return shader;
 }
 
-// Функция для создания шейдерной программы
+
 void createShaderProgram() {
-    // Вершинный шейдер
     std::string vertexShaderSource = R"(
         #version 330 core
         layout(location = 0) in vec3 aPos;
@@ -64,7 +58,6 @@ void createShaderProgram() {
         }
     )";
 
-    // Фрагментный шейдер
     std::string fragmentShaderSource = R"(
         #version 330 core
         in vec3 ourColor;
@@ -94,7 +87,6 @@ void createShaderProgram() {
     glDeleteShader(fragmentShader);
 }
 
-// Функция для создания матрицы масштабирования
 glm::mat4 scaleMatrix(float scaleX, float scaleY, float scaleZ) {
     glm::mat4 scale = glm::mat4(1.0f);
     scale[0][0] = scaleX;
@@ -103,7 +95,6 @@ glm::mat4 scaleMatrix(float scaleX, float scaleY, float scaleZ) {
     return scale;
 }
 
-// Функция для создания матрицы перемещения
 glm::mat4 translateMatrix(const glm::vec3& translation) {
     glm::mat4 translationMatrix = glm::mat4(1.0f);
     translationMatrix[3][0] = translation.x;
@@ -112,7 +103,6 @@ glm::mat4 translateMatrix(const glm::vec3& translation) {
     return translationMatrix;
 }
 
-// Функция для создания матрицы вида (lookAt)
 glm::mat4 lookAt(const glm::vec3& eye, const glm::vec3& target, const glm::vec3& up) {
     glm::vec3 forward = glm::normalize(target - eye);
     glm::vec3 right = glm::normalize(glm::cross(forward, up));
@@ -135,7 +125,6 @@ glm::mat4 lookAt(const glm::vec3& eye, const glm::vec3& target, const glm::vec3&
     return view;
 }
 
-// Функция для создания матрицы перспективной проекции
 glm::mat4 perspective(float fov, float aspect, float near, float far) {
     float tanHalfFov = tan(fov / 2.0f);
     glm::mat4 projection = glm::mat4(0.0f);
@@ -151,10 +140,8 @@ void initOpenGL() {
     glEnable(GL_DEPTH_TEST);
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
-    // Создание шейдеров
     createShaderProgram();
 
-    // Настройка матриц
     viewMatrix = lookAt(cameraPosition, cameraTarget, cameraUp);
     projectionMatrix = perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
 }
@@ -167,7 +154,6 @@ void processInput(sf::Window& window) {
         scale -= 0.01f;
     }
 
-    // Управление камерой
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::W))
         cameraPosition += cameraSpeed * glm::normalize(cameraTarget - cameraPosition);
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::S))
@@ -181,7 +167,6 @@ void processInput(sf::Window& window) {
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::E))
         cameraPosition.y -= cameraSpeed;
 
-    // Управление поворотом камеры
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left)) {
         yaw -= rotationSpeed;
     }
@@ -195,20 +180,17 @@ void processInput(sf::Window& window) {
         pitch -= rotationSpeed;
     }
 
-    // Ограничение угла тангажа
     if (pitch > 89.0f)
         pitch = 89.0f;
     if (pitch < -89.0f)
         pitch = -89.0f;
 
-    // Обновление направления камеры
     glm::vec3 direction;
     direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
     direction.y = sin(glm::radians(pitch));
     direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
     cameraTarget = cameraPosition + glm::normalize(direction);
 
-    // Обновление матрицы вида
     viewMatrix = lookAt(cameraPosition, cameraTarget, cameraUp);
 
     std::cout << "Current sphere scale: " << scale << std::endl;
@@ -220,7 +202,6 @@ void resizeCallback(sf::Window& window, int width, int height) {
     projectionMatrix = perspective(glm::radians(45.0f), (float)width / (float)height, 0.1f, 100.0f);
 }
 
-// Функция для генерации сферы
 void generateSphere(std::vector<GLfloat>& vertices, std::vector<GLuint>& indices, float radius, int sectorCount, int stackCount) {
     float x, y, z, xy;
     float nx, ny, nz;
@@ -287,29 +268,24 @@ int main() {
     glewInit();
     initOpenGL();
 
-    // Генерация сферы
     std::vector<GLfloat> sphereVertices;
     std::vector<GLuint> sphereIndices;
     generateSphere(sphereVertices, sphereIndices, 1.0f, 36, 18);
 
-    // Настройка VAO, VBO, CBO, EBO
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
 
     glBindVertexArray(VAO);
 
-    // Вершины
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sphereVertices.size() * sizeof(GLfloat), &sphereVertices[0], GL_STATIC_DRAW);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void*)0);
     glEnableVertexAttribArray(0);
 
-    // Нормали
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
     glEnableVertexAttribArray(1);
 
-    // Индексы
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sphereIndices.size() * sizeof(GLuint), &sphereIndices[0], GL_STATIC_DRAW);
 
@@ -329,10 +305,8 @@ int main() {
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Применение масштабирования
         glm::mat4 modelMatrix = scaleMatrix(scale, scale, scale);
 
-        // Установка матриц в шейдеры
         glUseProgram(shaderProgram);
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, &modelMatrix[0][0]);
         glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, &viewMatrix[0][0]);
