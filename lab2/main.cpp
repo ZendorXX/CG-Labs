@@ -1,314 +1,353 @@
-#include <SFML/Graphics.hpp>
 #include <SFML/Window.hpp>
+#include <SFML/Graphics.hpp>
 #include <GL/glew.h>
-#include <vector>
-#include <cmath>
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <iostream>
+#include <vector>
 
-// Структура для вершин
-struct Vertex {
-    float x, y, z;
-};
+// Глобальные переменные для VAO и масштабирования
+GLuint VAO, VBO, CBO, EBO;
+float scale = 1.0f;
+const float minScale = 0.05f;
+const float maxScale = 6.0f;
 
-// Структура для матрицы 4x4
-struct Matrix4 {
-    float m[16];
-};
+// Матрицы для камеры
+glm::mat4 viewMatrix;
+glm::mat4 projectionMatrix;
 
-// Функция для генерации вершин сферы
-std::vector<Vertex> generateSphereVertices(float radius, int sectors, int stacks) {
-    std::vector<Vertex> vertices;
-    for (int i = 0; i <= stacks; ++i) {
-        float lat0 = M_PI * (-0.5 + static_cast<float>(i) / stacks);
-        float z0 = sin(lat0);
-        float zr0 = cos(lat0);
+// Шейдеры
+GLuint shaderProgram;
 
-        for (int j = 0; j <= sectors; ++j) {
-            float lng = 2 * M_PI * static_cast<float>(j) / sectors;
-            float x = cos(lng);
-            float y = sin(lng);
+// Камера
+glm::vec3 cameraPosition = glm::vec3(0.0f, 1.0f, 5.0f);
+glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
+glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+float cameraSpeed = 0.01f;
 
-            vertices.push_back({radius * x * zr0, radius * y * zr0, radius * z0});
-        }
-    }
-    return vertices;
-}
-
-// Функция для генерации индексов сферы
-std::vector<unsigned int> generateSphereIndices(int sectors, int stacks) {
-    std::vector<unsigned int> indices;
-    for (int i = 0; i < stacks; ++i) {
-        for (int j = 0; j < sectors; ++j) {
-            int current = i * (sectors + 1) + j;
-            int next = current + sectors + 1;
-
-            indices.push_back(current);
-            indices.push_back(next);
-            indices.push_back(current + 1);
-
-            indices.push_back(next);
-            indices.push_back(next + 1);
-            indices.push_back(current + 1);
-        }
-    }
-    return indices;
-}
-
-// Функция для умножения матриц
-Matrix4 multiply(const Matrix4& a, const Matrix4& b) {
-    Matrix4 result = {};
-    for (int i = 0; i < 4; ++i) {
-        for (int j = 0; j < 4; ++j) {
-            for (int k = 0; k < 4; ++k) {
-                result.m[i * 4 + j] += a.m[i * 4 + k] * b.m[k * 4 + j];
-            }
-        }
-    }
-    return result;
-}
-
-// Функция для создания матрицы масштабирования
-Matrix4 scaleMatrix(float scaleX, float scaleY, float scaleZ) {
-    Matrix4 mat = {};
-    mat.m[0] = scaleX;
-    mat.m[5] = scaleY;
-    mat.m[10] = scaleZ;
-    mat.m[15] = 1.0f;
-    return mat;
-}
-
-// Функция для создания матрицы перспективной проекции
-Matrix4 perspectiveMatrix(float fov, float aspect, float near, float far) {
-    Matrix4 mat = {};
-    float f = 1.0f / tan(fov / 2.0f);
-    mat.m[0] = f / aspect;
-    mat.m[5] = f;
-    mat.m[10] = (far + near) / (near - far);
-    mat.m[11] = -1.0f;
-    mat.m[14] = (2.0f * far * near) / (near - far);
-    return mat;
-}
-
-// Функция для создания матрицы вида (lookAt)
-Matrix4 lookAtMatrix(const float* eye, const float* center, const float* up) {
-    float f[3] = { center[0] - eye[0], center[1] - eye[1], center[2] - eye[2] };
-    float fLength = sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
-    f[0] /= fLength;
-    f[1] /= fLength;
-    f[2] /= fLength;
-
-    float s[3] = { f[1] * up[2] - f[2] * up[1], f[2] * up[0] - f[0] * up[2], f[0] * up[1] - f[1] * up[0] };
-    float sLength = sqrt(s[0] * s[0] + s[1] * s[1] + s[2] * s[2]);
-    s[0] /= sLength;
-    s[1] /= sLength;
-    s[2] /= sLength;
-
-    float u[3] = { s[1] * f[2] - s[2] * f[1], s[2] * f[0] - s[0] * f[2], s[0] * f[1] - s[1] * f[0] };
-
-    Matrix4 mat = {};
-    mat.m[0] = s[0];
-    mat.m[4] = s[1];
-    mat.m[8] = s[2];
-    mat.m[1] = u[0];
-    mat.m[5] = u[1];
-    mat.m[9] = u[2];
-    mat.m[2] = -f[0];
-    mat.m[6] = -f[1];
-    mat.m[10] = -f[2];
-    mat.m[12] = -(s[0] * eye[0] + s[1] * eye[1] + s[2] * eye[2]);
-    mat.m[13] = -(u[0] * eye[0] + u[1] * eye[1] + u[2] * eye[2]);
-    mat.m[14] = f[0] * eye[0] + f[1] * eye[1] + f[2] * eye[2];
-    mat.m[15] = 1.0f;
-    return mat;
-}
+// Для поворота камеры
+float yaw = -90.0f; // Угол рыскания (yaw)
+float pitch = 0.0f; // Угол тангажа (pitch)
+float rotationSpeed = 0.01f; // Скорость поворота
 
 // Функция для компиляции шейдеров
-GLuint compileShaders(const std::string& vertexShaderSource, const std::string& fragmentShaderSource) {
-    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    const char* vShaderCode = vertexShaderSource.c_str();
-    glShaderSource(vertexShader, 1, &vShaderCode, NULL);
-    glCompileShader(vertexShader);
+GLuint compileShader(const std::string& source, GLenum shaderType) {
+    GLuint shader = glCreateShader(shaderType);
+    const char* src = source.c_str();
+    glShaderSource(shader, 1, &src, nullptr);
+    glCompileShader(shader);
 
     GLint success;
-    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
     if (!success) {
         char infoLog[512];
-        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
-        std::cerr << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
+        glGetShaderInfoLog(shader, 512, nullptr, infoLog);
+        std::cerr << "Shader compilation error: " << infoLog << std::endl;
     }
+    return shader;
+}
 
-    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    const char* fShaderCode = fragmentShaderSource.c_str();
-    glShaderSource(fragmentShader, 1, &fShaderCode, NULL);
-    glCompileShader(fragmentShader);
+// Функция для создания шейдерной программы
+void createShaderProgram() {
+    // Вершинный шейдер
+    std::string vertexShaderSource = R"(
+        #version 330 core
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec3 aColor;
+        out vec3 ourColor;
+        uniform mat4 model;
+        uniform mat4 view;
+        uniform mat4 projection;
+        void main() {
+            gl_Position = projection * view * model * vec4(aPos, 1.0);
+            ourColor = aColor;
+        }
+    )";
 
-    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
-    if (!success) {
-        char infoLog[512];
-        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
-        std::cerr << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog << std::endl;
-    }
+    // Фрагментный шейдер
+    std::string fragmentShaderSource = R"(
+        #version 330 core
+        in vec3 ourColor;
+        out vec4 FragColor;
+        void main() {
+            FragColor = vec4(ourColor, 1.0f);
+        }
+    )";
 
-    GLuint shaderProgram = glCreateProgram();
+    GLuint vertexShader = compileShader(vertexShaderSource, GL_VERTEX_SHADER);
+    GLuint fragmentShader = compileShader(fragmentShaderSource, GL_FRAGMENT_SHADER);
+
+    shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
     glLinkProgram(shaderProgram);
 
+    GLint success;
     glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
     if (!success) {
         char infoLog[512];
-        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
-        std::cerr << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
+        glGetProgramInfoLog(shaderProgram, 512, nullptr, infoLog);
+        std::cerr << "Shader program linking error: " << infoLog << std::endl;
     }
 
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
+}
 
-    return shaderProgram;
+// Функция для создания матрицы масштабирования
+glm::mat4 scaleMatrix(float scaleX, float scaleY, float scaleZ) {
+    glm::mat4 scale = glm::mat4(1.0f);
+    scale[0][0] = scaleX;
+    scale[1][1] = scaleY;
+    scale[2][2] = scaleZ;
+    return scale;
+}
+
+// Функция для создания матрицы перемещения
+glm::mat4 translateMatrix(const glm::vec3& translation) {
+    glm::mat4 translationMatrix = glm::mat4(1.0f);
+    translationMatrix[3][0] = translation.x;
+    translationMatrix[3][1] = translation.y;
+    translationMatrix[3][2] = translation.z;
+    return translationMatrix;
+}
+
+// Функция для создания матрицы вида (lookAt)
+glm::mat4 lookAt(const glm::vec3& eye, const glm::vec3& target, const glm::vec3& up) {
+    glm::vec3 forward = glm::normalize(target - eye);
+    glm::vec3 right = glm::normalize(glm::cross(forward, up));
+    glm::vec3 newUp = glm::cross(right, forward);
+
+    glm::mat4 view = glm::mat4(1.0f);
+    view[0][0] = right.x;
+    view[1][0] = right.y;
+    view[2][0] = right.z;
+    view[0][1] = newUp.x;
+    view[1][1] = newUp.y;
+    view[2][1] = newUp.z;
+    view[0][2] = -forward.x;
+    view[1][2] = -forward.y;
+    view[2][2] = -forward.z;
+    view[3][0] = -glm::dot(right, eye);
+    view[3][1] = -glm::dot(newUp, eye);
+    view[3][2] = glm::dot(forward, eye);
+
+    return view;
+}
+
+// Функция для создания матрицы перспективной проекции
+glm::mat4 perspective(float fov, float aspect, float near, float far) {
+    float tanHalfFov = tan(fov / 2.0f);
+    glm::mat4 projection = glm::mat4(0.0f);
+    projection[0][0] = 1.0f / (aspect * tanHalfFov);
+    projection[1][1] = 1.0f / tanHalfFov;
+    projection[2][2] = -(far + near) / (far - near);
+    projection[2][3] = -1.0f;
+    projection[3][2] = -(2.0f * far * near) / (far - near);
+    return projection;
+}
+
+void initOpenGL() {
+    glEnable(GL_DEPTH_TEST);
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+
+    // Создание шейдеров
+    createShaderProgram();
+
+    // Настройка матриц
+    viewMatrix = lookAt(cameraPosition, cameraTarget, cameraUp);
+    projectionMatrix = perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
+}
+
+void processInput(sf::Window& window) {
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::R)) {
+        scale += 0.01f;
+    }
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::F)) {
+        scale -= 0.01f;
+    }
+
+    // Управление камерой
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::W))
+        cameraPosition += cameraSpeed * glm::normalize(cameraTarget - cameraPosition);
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::S))
+        cameraPosition -= cameraSpeed * glm::normalize(cameraTarget - cameraPosition);
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::A))
+        cameraPosition -= glm::normalize(glm::cross(cameraTarget - cameraPosition, cameraUp)) * cameraSpeed;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::D))
+        cameraPosition += glm::normalize(glm::cross(cameraTarget - cameraPosition, cameraUp)) * cameraSpeed;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Q))
+        cameraPosition.y += cameraSpeed;
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::E))
+        cameraPosition.y -= cameraSpeed;
+
+    // Управление поворотом камеры
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left)) {
+        yaw -= rotationSpeed;
+    }
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) {
+        yaw += rotationSpeed;
+    }
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up)) {
+        pitch += rotationSpeed;
+    }
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) {
+        pitch -= rotationSpeed;
+    }
+
+    // Ограничение угла тангажа
+    if (pitch > 89.0f)
+        pitch = 89.0f;
+    if (pitch < -89.0f)
+        pitch = -89.0f;
+
+    // Обновление направления камеры
+    glm::vec3 direction;
+    direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    direction.y = sin(glm::radians(pitch));
+    direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    cameraTarget = cameraPosition + glm::normalize(direction);
+
+    // Обновление матрицы вида
+    viewMatrix = lookAt(cameraPosition, cameraTarget, cameraUp);
+
+    std::cout << "Current sphere scale: " << scale << std::endl;
+    std::cout << "Camera position: (" << cameraPosition.x << ", " << cameraPosition.y << ", " << cameraPosition.z << ")" << std::endl;
+}
+
+void resizeCallback(sf::Window& window, int width, int height) {
+    glViewport(0, 0, width, height);
+    projectionMatrix = perspective(glm::radians(45.0f), (float)width / (float)height, 0.1f, 100.0f);
+}
+
+// Функция для генерации сферы
+void generateSphere(std::vector<GLfloat>& vertices, std::vector<GLuint>& indices, float radius, int sectorCount, int stackCount) {
+    float x, y, z, xy;
+    float nx, ny, nz;
+    float lengthInv = 1.0f / radius;
+
+    float sectorStep = 2 * M_PI / sectorCount;
+    float stackStep = M_PI / stackCount;
+    float sectorAngle, stackAngle;
+
+    for (int i = 0; i <= stackCount; ++i) {
+        stackAngle = M_PI / 2 - i * stackStep;
+        xy = radius * cosf(stackAngle);
+        z = radius * sinf(stackAngle);
+
+        for (int j = 0; j <= sectorCount; ++j) {
+            sectorAngle = j * sectorStep;
+
+            x = xy * cosf(sectorAngle);
+            y = xy * sinf(sectorAngle);
+            vertices.push_back(x);
+            vertices.push_back(y);
+            vertices.push_back(z);
+
+            nx = x * lengthInv;
+            ny = y * lengthInv;
+            nz = z * lengthInv;
+            vertices.push_back(nx);
+            vertices.push_back(ny);
+            vertices.push_back(nz);
+        }
+    }
+
+    int k1, k2;
+    for (int i = 0; i < stackCount; ++i) {
+        k1 = i * (sectorCount + 1);
+        k2 = k1 + sectorCount + 1;
+
+        for (int j = 0; j < sectorCount; ++j, ++k1, ++k2) {
+            if (i != 0) {
+                indices.push_back(k1);
+                indices.push_back(k2);
+                indices.push_back(k1 + 1);
+            }
+
+            if (i != (stackCount - 1)) {
+                indices.push_back(k1 + 1);
+                indices.push_back(k2);
+                indices.push_back(k2 + 1);
+            }
+        }
+    }
 }
 
 int main() {
-    // Настройка SFML окна
     sf::ContextSettings settings;
     settings.depthBits = 24;
     settings.stencilBits = 8;
     settings.majorVersion = 3;
     settings.minorVersion = 3;
 
-    sf::Window window(sf::VideoMode(800, 600), "Lab2", sf::Style::Default, settings);
+    sf::Window window(sf::VideoMode(800, 600), "Lab 2", sf::Style::Default, settings);
+    window.setActive(true);
 
-    // Инициализация GLEW
-    glewExperimental = GL_TRUE;
-    if (glewInit() != GLEW_OK) {
-        std::cerr << "Failed to initialize GLEW" << std::endl;
-        return -1;
-    }
-
-    // Включение глубины
-    glEnable(GL_DEPTH_TEST);
+    glewInit();
+    initOpenGL();
 
     // Генерация сферы
-    std::vector<Vertex> vertices = generateSphereVertices(1.0f, 36, 18);
-    std::vector<unsigned int> indices = generateSphereIndices(36, 18);
+    std::vector<GLfloat> sphereVertices;
+    std::vector<GLuint> sphereIndices;
+    generateSphere(sphereVertices, sphereIndices, 1.0f, 36, 18);
 
-    // Настройка VAO, VBO, EBO
-    GLuint VAO, VBO, EBO;
+    // Настройка VAO, VBO, CBO, EBO
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
     glGenBuffers(1, &EBO);
 
     glBindVertexArray(VAO);
+
+    // Вершины
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex), vertices.data(), GL_STATIC_DRAW);
-
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
+    glBufferData(GL_ARRAY_BUFFER, sphereVertices.size() * sizeof(GLfloat), &sphereVertices[0], GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void*)0);
     glEnableVertexAttribArray(0);
+
+    // Нормали
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(1);
+
+    // Индексы
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sphereIndices.size() * sizeof(GLuint), &sphereIndices[0], GL_STATIC_DRAW);
 
     glBindVertexArray(0);
 
-    // Компиляция шейдеров
-    const std::string vertexShaderSource = R"(
-        #version 330 core
-        layout(location = 0) in vec3 aPos;
-        uniform mat4 model;
-        uniform mat4 view;
-        uniform mat4 projection;
-
-        void main() {
-            gl_Position = projection * view * model * vec4(aPos, 1.0);
-        }
-    )";
-
-    const std::string fragmentShaderSource = R"(
-        #version 330 core
-        out vec4 FragColor;
-
-        void main() {
-            FragColor = vec4(1.0, 1.0, 1.0, 1.0); // Белый цвет
-        }
-    )";
-
-    GLuint shaderProgram = compileShaders(vertexShaderSource, fragmentShaderSource);
-
-    // Переменные для масштабирования и камеры
-    float scale = 1.0f;
-    float scaleSpeed = 0.01f; // Скорость изменения масштаба
-    float cameraSpeed = 0.05f; // Скорость перемещения камеры
-    float cameraDistance = 3.0f; // Расстояние камеры до сферы
-    float cameraAngle = 0.0f; // Угол поворота камеры
-
-    // Координаты камеры
-    float eye[3] = { 0.0f, 0.0f, cameraDistance };
-    float center[3] = { 0.0f, 0.0f, 0.0f };
-    float up[3] = { 0.0f, 1.0f, 0.0f };
-
-    // Основной цикл
     while (window.isOpen()) {
         sf::Event event;
         while (window.pollEvent(event)) {
             if (event.type == sf::Event::Closed)
                 window.close();
             if (event.type == sf::Event::Resized) {
-                glViewport(0, 0, event.size.width, event.size.height);
+                resizeCallback(window, event.size.width, event.size.height);
             }
         }
 
-        // Очистка буфера
+        processInput(window);
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
-        // Использование шейдеров
+        // Применение масштабирования
+        glm::mat4 modelMatrix = scaleMatrix(scale, scale, scale);
+
+        // Установка матриц в шейдеры
         glUseProgram(shaderProgram);
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, &modelMatrix[0][0]);
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, &viewMatrix[0][0]);
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, &projectionMatrix[0][0]);
 
-        // Обновление матриц
-        Matrix4 model = scaleMatrix(scale, scale, scale);
-        Matrix4 projection = perspectiveMatrix(M_PI / 4.0f, (float)window.getSize().x / window.getSize().y, 0.1f, 100.0f);
-        Matrix4 view = lookAtMatrix(eye, center, up);
-
-        // Передача матриц в шейдер
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, model.m);
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, view.m);
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, projection.m);
-
-        // Отрисовка сферы
         glBindVertexArray(VAO);
-        glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, sphereIndices.size(), GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
 
-        // Обработка пользовательского ввода
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up))
-            scale += scaleSpeed;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down))
-            scale -= scaleSpeed;
-
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::W))
-            eye[2] -= cameraSpeed;
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::S))
-            eye[2] += cameraSpeed;
-
-        // Перемещение камеры влево-вправо
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::A)) {
-            eye[0] -= cameraSpeed;
-        }
-        if (sf::Keyboard::isKeyPressed(sf::Keyboard::D)) {
-            eye[0] += cameraSpeed;
-        }
-
-        // Вывод информации в консоль
-        std::cout << "Sphere Scale: " << scale << std::endl;
-        std::cout << "Camera Position: (" << eye[0] << ", " << eye[1] << ", " << eye[2] << ")" << std::endl;
-
-        // Обновление окна
         window.display();
     }
 
-    // Очистка ресурсов
     glDeleteVertexArrays(1, &VAO);
     glDeleteBuffers(1, &VBO);
     glDeleteBuffers(1, &EBO);
-    glDeleteProgram(shaderProgram);
 
     return 0;
 }
