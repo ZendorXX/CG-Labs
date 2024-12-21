@@ -6,7 +6,6 @@
 #include <iostream>
 #include <string>
 
-// Данные для куба
 const GLfloat cubeVertices[] = {
     // Front face
     -1.0f, -1.0f,  1.0f,
@@ -17,28 +16,27 @@ const GLfloat cubeVertices[] = {
     -1.0f, -1.0f, -1.0f,
      1.0f, -1.0f, -1.0f,
      1.0f,  1.0f, -1.0f,
-    -1.0f,  1.0f, -1.0f
-};
-
-const GLuint cubeIndices[] = {
-    // Front face
-    0, 1, 2,
-    2, 3, 0,
+    -1.0f,  1.0f, -1.0f,
     // Right face
-    1, 5, 6,
-    6, 2, 1,
-    // Back face
-    7, 6, 5,
-    5, 4, 7,
+     1.0f, -1.0f,  1.0f,
+     1.0f, -1.0f, -1.0f,
+     1.0f,  1.0f, -1.0f,
+     1.0f,  1.0f,  1.0f,
     // Left face
-    4, 0, 3,
-    3, 7, 4,
-    // Bottom face
-    4, 5, 1,
-    1, 0, 4,
+    -1.0f, -1.0f,  1.0f,
+    -1.0f, -1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f,  1.0f,
     // Top face
-    3, 2, 6,
-    6, 7, 3
+    -1.0f,  1.0f,  1.0f,
+     1.0f,  1.0f,  1.0f,
+     1.0f,  1.0f, -1.0f,
+    -1.0f,  1.0f, -1.0f,
+    // Bottom face
+    -1.0f, -1.0f,  1.0f,
+     1.0f, -1.0f,  1.0f,
+     1.0f, -1.0f, -1.0f,
+    -1.0f, -1.0f, -1.0f,
 };
 
 const GLfloat cubeNormals[] = {
@@ -62,17 +60,27 @@ const GLfloat cubeNormals[] = {
     -1.0f, 0.0f, 0.0f,
     -1.0f, 0.0f, 0.0f,
     -1.0f, 0.0f, 0.0f,
+    // Top face
+    0.0f, 1.0f, 0.0f,
+    0.0f, 1.0f, 0.0f,
+    0.0f, 1.0f, 0.0f,
+    0.0f, 1.0f, 0.0f,
     // Bottom face
     0.0f, -1.0f, 0.0f,
     0.0f, -1.0f, 0.0f,
     0.0f, -1.0f, 0.0f,
     0.0f, -1.0f, 0.0f,
-    // Top face
-    0.0f, 1.0f, 0.0f,
-    0.0f, 1.0f, 0.0f,
-    0.0f, 1.0f, 0.0f,
-    0.0f, 1.0f, 0.0f
 };
+
+const GLuint cubeIndices[] = {
+    0, 1, 2, 2, 3, 0,   // Front
+    4, 5, 6, 6, 7, 4,   // Back
+    8, 9, 10, 10, 11, 8, // Right
+    12, 13, 14, 14, 15, 12, // Left
+    16, 17, 18, 18, 19, 16, // Top
+    20, 21, 22, 22, 23, 20  // Bottom
+};
+
 
 GLuint VAO, VBO, NBO, EBO;
 float scale = 1.0f;
@@ -259,9 +267,6 @@ glm::mat4 perspective(float fov, float aspect, float near, float far) {
 
 void initOpenGL() {
     glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE); // Включаем отсечение задних граней
-    glCullFace(GL_BACK);
-    glFrontFace(GL_CCW);
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
     createFlatShaderProgram();
