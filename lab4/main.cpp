@@ -82,7 +82,8 @@ const float maxScale = 6.0f;
 glm::mat4 viewMatrix;
 glm::mat4 projectionMatrix;
 
-GLuint shaderProgram;
+GLuint flatShaderProgram, gouraudShaderProgram;
+GLuint currentShaderProgram;
 
 glm::vec3 cameraPosition = glm::vec3(0.0f, 1.0f, 5.0f);
 glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -111,7 +112,7 @@ GLuint compileShader(const std::string& source, GLenum shaderType) {
     return shader;
 }
 
-void createShaderProgram() {
+void createFlatShaderProgram() {
     std::string vertexShaderSource = R"(
         #version 330 core
         layout(location = 0) in vec3 aPos;
@@ -156,17 +157,76 @@ void createShaderProgram() {
     GLuint vertexShader = compileShader(vertexShaderSource, GL_VERTEX_SHADER);
     GLuint fragmentShader = compileShader(fragmentShaderSource, GL_FRAGMENT_SHADER);
 
-    shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glLinkProgram(shaderProgram);
+    flatShaderProgram = glCreateProgram();
+    glAttachShader(flatShaderProgram, vertexShader);
+    glAttachShader(flatShaderProgram, fragmentShader);
+    glLinkProgram(flatShaderProgram);
 
     GLint success;
-    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+    glGetProgramiv(flatShaderProgram, GL_LINK_STATUS, &success);
     if (!success) {
         char infoLog[512];
-        glGetProgramInfoLog(shaderProgram, 512, nullptr, infoLog);
-        std::cerr << "Shader program linking error: " << infoLog << std::endl;
+        glGetProgramInfoLog(flatShaderProgram, 512, nullptr, infoLog);
+        std::cerr << "Flat shader program linking error: " << infoLog << std::endl;
+    }
+
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+}
+
+void createGouraudShaderProgram() {
+    std::string vertexShaderSource = R"(
+        #version 330 core
+        layout(location = 0) in vec3 aPos;
+        layout(location = 1) in vec3 aNormal;
+
+        out vec3 FragColor;
+
+        uniform mat4 model;
+        uniform mat4 view;
+        uniform mat4 projection;
+        uniform vec3 lightPos;
+        uniform vec3 viewPos;
+        uniform vec3 lightColor;
+
+        void main() {
+            vec3 FragPos = vec3(model * vec4(aPos, 1.0));
+            vec3 Normal = mat3(transpose(inverse(model))) * aNormal;
+            vec3 norm = normalize(Normal);
+            vec3 lightDir = normalize(lightPos - FragPos);
+            float diff = max(dot(norm, lightDir), 0.0);
+            vec3 diffuse = diff * lightColor;
+
+            FragColor = diffuse;
+            gl_Position = projection * view * vec4(FragPos, 1.0);
+        }
+    )";
+
+    std::string fragmentShaderSource = R"(
+        #version 330 core
+        in vec3 FragColor;
+
+        out vec4 FragColorOut;
+
+        void main() {
+            FragColorOut = vec4(FragColor, 1.0f);
+        }
+    )";
+
+    GLuint vertexShader = compileShader(vertexShaderSource, GL_VERTEX_SHADER);
+    GLuint fragmentShader = compileShader(fragmentShaderSource, GL_FRAGMENT_SHADER);
+
+    gouraudShaderProgram = glCreateProgram();
+    glAttachShader(gouraudShaderProgram, vertexShader);
+    glAttachShader(gouraudShaderProgram, fragmentShader);
+    glLinkProgram(gouraudShaderProgram);
+
+    GLint success;
+    glGetProgramiv(gouraudShaderProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        char infoLog[512];
+        glGetProgramInfoLog(gouraudShaderProgram, 512, nullptr, infoLog);
+        std::cerr << "Gouraud shader program linking error: " << infoLog << std::endl;
     }
 
     glDeleteShader(vertexShader);
@@ -199,9 +259,15 @@ glm::mat4 perspective(float fov, float aspect, float near, float far) {
 
 void initOpenGL() {
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE); // Включаем отсечение задних граней
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
     glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
-    createShaderProgram();
+    createFlatShaderProgram();
+    createGouraudShaderProgram();
+
+    currentShaderProgram = flatShaderProgram;
 
     viewMatrix = lookAt(cameraPosition, cameraTarget, cameraUp);
     projectionMatrix = perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
@@ -262,8 +328,9 @@ void processInput(sf::Window& window) {
 
     viewMatrix = lookAt(cameraPosition, cameraTarget, cameraUp);
 
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Space)) {
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::M)) {
         flatShading = !flatShading;
+        currentShaderProgram = flatShading ? flatShaderProgram : gouraudShaderProgram;
         std::cout << "Shading mode: " << (flatShading ? "Flat" : "Gouraud") << std::endl;
     }
 }
@@ -326,13 +393,13 @@ int main() {
 
         glm::mat4 modelMatrix = scaleMatrix(scale, scale, scale);
 
-        glUseProgram(shaderProgram);
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "model"), 1, GL_FALSE, &modelMatrix[0][0]);
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "view"), 1, GL_FALSE, &viewMatrix[0][0]);
-        glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "projection"), 1, GL_FALSE, &projectionMatrix[0][0]);
-        glUniform3fv(glGetUniformLocation(shaderProgram, "lightPos"), 1, &lightPos[0]);
-        glUniform3fv(glGetUniformLocation(shaderProgram, "viewPos"), 1, &cameraPosition[0]);
-        glUniform3f(glGetUniformLocation(shaderProgram, "lightColor"), 1.0f, 1.0f, 1.0f);
+        glUseProgram(currentShaderProgram);
+        glUniformMatrix4fv(glGetUniformLocation(currentShaderProgram, "model"), 1, GL_FALSE, &modelMatrix[0][0]);
+        glUniformMatrix4fv(glGetUniformLocation(currentShaderProgram, "view"), 1, GL_FALSE, &viewMatrix[0][0]);
+        glUniformMatrix4fv(glGetUniformLocation(currentShaderProgram, "projection"), 1, GL_FALSE, &projectionMatrix[0][0]);
+        glUniform3fv(glGetUniformLocation(currentShaderProgram, "lightPos"), 1, &lightPos[0]);
+        glUniform3fv(glGetUniformLocation(currentShaderProgram, "viewPos"), 1, &cameraPosition[0]);
+        glUniform3f(glGetUniformLocation(currentShaderProgram, "lightColor"), 1.0f, 1.0f, 1.0f);
 
         drawCube();
 
