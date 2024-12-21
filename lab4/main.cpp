@@ -81,7 +81,6 @@ const GLuint cubeIndices[] = {
     20, 21, 22, 22, 23, 20  // Bottom
 };
 
-
 GLuint VAO, VBO, NBO, EBO;
 float scale = 1.0f;
 const float minScale = 0.05f;
@@ -148,16 +147,20 @@ void createFlatShaderProgram() {
         out vec4 FragColor;
 
         uniform vec3 lightPos;
+        uniform vec3 lightPos2;
         uniform vec3 viewPos;
         uniform vec3 lightColor;
 
         void main() {
             vec3 norm = normalize(Normal);
             vec3 lightDir = normalize(lightPos - FragPos);
+            vec3 lightDir2 = normalize(lightPos2 - FragPos);
             float diff = max(dot(norm, lightDir), 0.0);
-            vec3 diffuse = diff * lightColor;
+            float diff2 = max(dot(norm, lightDir2), 0.0);
+            vec3 diffuse = diff * lightColor * 1.25;
+            vec3 diffuse2 = diff2 * lightColor * 1.25;
 
-            vec3 result = diffuse;
+            vec3 result = diffuse + diffuse2;
             FragColor = vec4(result, 1.0f);
         }
     )";
@@ -194,6 +197,7 @@ void createGouraudShaderProgram() {
         uniform mat4 view;
         uniform mat4 projection;
         uniform vec3 lightPos;
+        uniform vec3 lightPos2;
         uniform vec3 viewPos;
         uniform vec3 lightColor;
 
@@ -201,11 +205,20 @@ void createGouraudShaderProgram() {
             vec3 FragPos = vec3(model * vec4(aPos, 1.0));
             vec3 Normal = mat3(transpose(inverse(model))) * aNormal;
             vec3 norm = normalize(Normal);
+
+            // Освещение от первого источника света
             vec3 lightDir = normalize(lightPos - FragPos);
             float diff = max(dot(norm, lightDir), 0.0);
             vec3 diffuse = diff * lightColor;
 
-            FragColor = diffuse;
+            // Освещение от второго источника света
+            vec3 lightDir2 = normalize(lightPos2 - FragPos);
+            float diff2 = max(dot(norm, lightDir2), 0.0);
+            vec3 diffuse2 = diff2 * lightColor;
+
+            // Суммарное освещение
+            FragColor = diffuse + diffuse2;
+
             gl_Position = projection * view * vec4(FragPos, 1.0);
         }
     )";
@@ -284,6 +297,8 @@ void drawCube() {
     glBindVertexArray(0);
 }
 
+bool mKeyPressed = false;
+
 void processInput(sf::Window& window) {
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::R)) {
         scale += 0.01f;
@@ -333,10 +348,14 @@ void processInput(sf::Window& window) {
 
     viewMatrix = lookAt(cameraPosition, cameraTarget, cameraUp);
 
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::M)) {
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::M) && !mKeyPressed) {
         flatShading = !flatShading;
         currentShaderProgram = flatShading ? flatShaderProgram : gouraudShaderProgram;
         std::cout << "Shading mode: " << (flatShading ? "Flat" : "Gouraud") << std::endl;
+        mKeyPressed = true;
+    }
+    if (!sf::Keyboard::isKeyPressed(sf::Keyboard::M)) {
+        mKeyPressed = false;
     }
 }
 
@@ -380,7 +399,8 @@ int main() {
 
     glBindVertexArray(0);
 
-    glm::vec3 lightPos = glm::vec3(2.0f, 2.0f, 2.0f); // Позиция источника света
+    glm::vec3 lightPos = glm::vec3(1.5f, 2.0f, 3.0f);
+    glm::vec3 lightPos2 = glm::vec3(-1.5f, 2.0f, -3.0f);
 
     while (window.isOpen()) {
         sf::Event event;
@@ -403,6 +423,7 @@ int main() {
         glUniformMatrix4fv(glGetUniformLocation(currentShaderProgram, "view"), 1, GL_FALSE, &viewMatrix[0][0]);
         glUniformMatrix4fv(glGetUniformLocation(currentShaderProgram, "projection"), 1, GL_FALSE, &projectionMatrix[0][0]);
         glUniform3fv(glGetUniformLocation(currentShaderProgram, "lightPos"), 1, &lightPos[0]);
+        glUniform3fv(glGetUniformLocation(currentShaderProgram, "lightPos2"), 1, &lightPos2[0]);
         glUniform3fv(glGetUniformLocation(currentShaderProgram, "viewPos"), 1, &cameraPosition[0]);
         glUniform3f(glGetUniformLocation(currentShaderProgram, "lightColor"), 1.0f, 1.0f, 1.0f);
 
